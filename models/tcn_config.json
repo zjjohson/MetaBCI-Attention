@@ -1,0 +1,13 @@
+{
+  "model": "TCN-Attention",
+  "input_shape": [
+    2,
+    250
+  ],
+  "n_classes": 3,
+  "n_params": 123139,
+  "n_samples": 28999,
+  "test_accuracy": 0.7850983097619869,
+  "val_accuracy": 0.7778544325629527,
+  "best_epoch": 47
+}

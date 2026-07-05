@@ -158,3 +158,9 @@ cython_debug/
 .checkpoints
 /checkpoints
 .checkpoints/
+
+# Large media files
+media/
+*.mp3
+*.mp4
+*.wav

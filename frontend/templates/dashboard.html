@@ -1,0 +1,520 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MetaBCI 注意力实时监测与反馈系统</title>
+<style>
+:root {
+  --bg-primary: #060b13;
+  --bg-card: #0d1421;
+  --border: #1a2636;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --accent-blue: #3b82f6;
+  --accent-cyan: #06b6d4;
+  --focused: #10b981;
+  --normal: #f59e0b;
+  --distracted: #ef4444;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  font-family: 'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+  font-size: 14px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+}
+
+/* ====== 导航 ====== */
+.navbar {
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 32px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top:0; z-index:100;
+}
+.navbar .logo { display:flex; align-items:center; gap:12px; }
+.navbar .logo .icon {
+  width:42px; height:42px;
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+  border-radius: 12px;
+  display:flex; align-items:center; justify-content:center;
+  font-size: 22px;
+}
+.navbar .logo h1 { font-size: 22px; font-weight:700; }
+.navbar .logo span { color: var(--accent-cyan); }
+
+.status-dot {
+  display:inline-block; width:10px; height:10px;
+  border-radius:50%; margin-right:8px;
+  animation: pulse-dot 2s infinite;
+}
+@keyframes pulse-dot {
+  0%,100% { opacity:1; transform:scale(1); }
+  50% { opacity:0.5; transform:scale(1.6); }
+}
+
+.btn {
+  padding: 10px 20px; border-radius:8px; border:1px solid var(--border);
+  background: var(--bg-card); color: var(--text-secondary);
+  cursor: pointer; font-size: 16px; transition: all .2s;
+  font-family: inherit;
+}
+.btn:hover { background:#1a2332; color:#fff; border-color: var(--accent-blue); }
+.btn--active { background: var(--accent-blue); color:#fff; border-color: var(--accent-blue); }
+.btn--demo-active { background: var(--focused); color:#fff; border-color: var(--focused); }
+
+/* ====== 主布局 ====== */
+.container {
+  max-width: 1100px; margin:0 auto; padding: 16px 24px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto;
+  gap: 20px;
+  align-items: start;
+}
+
+/* ====== 卡片 ====== */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px;
+  transition: border-color .3s;
+}
+.card:hover { border-color: var(--accent-blue); }
+.card__header {
+  display:flex; align-items:center; justify-content:space-between;
+  margin-bottom: 18px;
+}
+.card__header h3 { font-size:18px; font-weight:600; color:var(--text-secondary); text-transform:uppercase; letter-spacing:2px; }
+.card__header .badge {
+  font-size:14px; padding:4px 12px; border-radius:12px;
+  background: rgba(59,130,246,0.15); color:var(--accent-blue);
+}
+
+/* ====== 状态主卡片 ====== */
+.state-card {
+  grid-column: 1 / -1;
+  text-align: center; padding: 28px 24px 24px;
+}
+
+.state-ring {
+  width: 150px; height: 150px; margin:0 auto 14px;
+  border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  transition: all .5s;
+}
+.state-ring--focused { box-shadow: 0 0 80px rgba(16,185,129,0.35), inset 0 0 60px rgba(16,185,129,0.2); border:4px solid var(--focused); }
+.state-ring--normal  { box-shadow: 0 0 80px rgba(245,158,11,0.35), inset 0 0 60px rgba(245,158,11,0.2); border:4px solid var(--normal); }
+.state-ring--distracted { box-shadow: 0 0 80px rgba(239,68,68,0.35), inset 0 0 60px rgba(239,68,68,0.2); border:4px solid var(--distracted); }
+.state-ring--unknown { box-shadow: 0 0 30px rgba(148,163,184,0.2); border:4px solid var(--text-muted); }
+
+.state-label { font-size: 36px; font-weight: 800; transition: color .4s; }
+.state-label--focused { color: var(--focused); }
+.state-label--normal { color: var(--normal); }
+.state-label--distracted { color: var(--distracted); }
+.state-label--unknown { color: var(--text-muted); }
+
+.state-confidence { font-size: 16px; color: var(--text-muted); margin-top:6px; }
+.state-timestamp { font-size: 14px; color: var(--text-muted); margin-top:10px; font-family: Consolas, monospace; }
+
+/* ====== 三列统计 ====== */
+.stats-grid {
+  display: grid; grid-template-columns: repeat(3,1fr); gap:16px; margin-top:20px;
+}
+.stat-item {
+  text-align: center; padding: 18px 10px; border-radius:10px;
+  background: rgba(255,255,255,0.02); border:1px solid var(--border);
+}
+.stat-item .stat-num { font-size: 34px; font-weight:800; }
+.stat-item .stat-label { font-size: 18px; color:var(--text-muted); margin-top:8px; font-weight:700; }
+.stat-item--focused .stat-num { color: var(--focused); }
+.stat-item--normal .stat-num { color: var(--normal); }
+.stat-item--distracted .stat-num { color: var(--distracted); }
+
+/* ====== 波形画布 ====== */
+.wave-canvas { width:100%; height:260px; border-radius:8px; background: rgba(0,0,0,0.45); display:block; }
+
+/* ====== 柱状图 ====== */
+.chart-card-inner { display:flex; flex-direction:column; justify-content:center; min-height:260px; }
+.chart-bar-wrap { display:flex; align-items: end; gap:24px; height:160px; margin-top:10px; margin-bottom:4px; overflow:hidden; }
+.chart-bar { flex:1; text-align:center; }
+.chart-bar .bar { width:100%; border-radius:6px 6px 0 0; transition: height .5s; min-height:4px; }
+.chart-bar .bar--focused { background: var(--focused); }
+.chart-bar .bar--normal { background: var(--normal); }
+.chart-bar .bar--distracted { background: var(--distracted); }
+.chart-bar .bar-label { font-size:17px; color:var(--text-muted); margin-top:8px; font-weight:600; }
+
+/* ====== 历史表格 ====== */
+.history-table { width:100%; border-collapse:collapse; font-size:16px; }
+.history-table th { text-align:left; padding:10px 14px; color:var(--text-muted); font-weight:600; border-bottom:1px solid var(--border); font-size:15px; text-transform:uppercase; letter-spacing:1px; }
+.history-table td { padding:8px 14px; border-bottom:1px solid rgba(26,38,54,0.5); font-family: Consolas, monospace; }
+.history-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+.tag { display:inline-block; padding:4px 12px; border-radius:6px; font-size:15px; font-weight:700; }
+.tag--focused { background: rgba(16,185,129,0.15); color:var(--focused); }
+.tag--normal { background: rgba(245,158,11,0.15); color:var(--normal); }
+.tag--distracted { background: rgba(239,68,68,0.15); color:var(--distracted); }
+
+/* ====== 页脚 ====== */
+.footer { text-align:center; padding:20px; color:var(--text-muted); font-size:16px; border-top:1px solid var(--border); margin-top:24px; }
+
+/* 入场动画 */
+.card { animation: fadeIn .4s ease-out; }
+@keyframes fadeIn { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
+
+@media (max-width:1000px) { .container { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="logo"><div class="icon">🧠</div><h1>MetaBCI <span>注意力实时监测</span></h1></div>
+  <div style="display:flex;align-items:center;gap:20px;">
+    <span id="connection-indicator" style="font-size:16px;color:var(--text-muted)">
+      <span class="status-dot" id="indicator-dot" style="background:var(--focused)"></span>
+      <span id="indicator-text">演示模式</span>
+    </span>
+    <div class="actions">
+      <button class="btn" id="btn-device" onclick="switchToDevice()">🔌 连接设备</button>
+      <button class="btn btn--demo-active" id="btn-demo" onclick="switchToDemo()">🎭 演示模式</button>
+      <button class="btn" onclick="resetData()" style="border-color:var(--distracted);color:var(--distracted)">🔄 重置</button>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+
+  <!-- 状态主卡片 -->
+  <div class="card state-card" id="state-card">
+    <div class="card__header" style="justify-content:center"><h3>实时注意力状态</h3><span class="badge" id="badge-live">LIVE</span></div>
+    <div class="state-ring state-ring--unknown" id="state-ring">
+      <div>
+        <div class="state-label state-label--unknown" id="state-label">等待中</div>
+        <div class="state-confidence" id="state-confidence">--</div>
+      </div>
+    </div>
+    <div class="state-timestamp" id="state-timestamp">--</div>
+
+    <div class="stats-grid">
+      <div class="stat-item stat-item--focused"><div class="stat-num" id="stat-focused">0</div><div class="stat-label">集 中</div></div>
+      <div class="stat-item stat-item--normal"><div class="stat-num" id="stat-normal">0</div><div class="stat-label">一 般</div></div>
+      <div class="stat-item stat-item--distracted"><div class="stat-num" id="stat-distracted">0</div><div class="stat-label">涣 散</div></div>
+    </div>
+  </div>
+
+  <!-- 波形 -->
+  <div class="card">
+    <div class="card__header"><h3>脑电频带  α波 / β波</h3><span class="badge">实时</span></div>
+    <canvas class="wave-canvas" id="wave-canvas"></canvas>
+  </div>
+
+  <!-- 柱状图 -->
+  <div class="card">
+    <div class="card__header"><h3>状态分布</h3><span class="badge" id="badge-total">总计: 0</span></div>
+    <div class="chart-card-inner">
+      <div class="chart-bar-wrap">
+        <div class="chart-bar"><div class="bar bar--focused" id="bar-focused" style="height:0"></div><div class="bar-label">集中</div></div>
+        <div class="chart-bar"><div class="bar bar--normal" id="bar-normal" style="height:0"></div><div class="bar-label">一般</div></div>
+        <div class="chart-bar"><div class="bar bar--distracted" id="bar-distracted" style="height:0"></div><div class="bar-label">涣散</div></div>
+      </div>
+      <div style="margin-top:18px;font-size:18px;color:var(--text-muted);text-align:center">
+        平均置信度: <strong style="color:var(--accent-cyan)" id="avg-conf">--</strong>
+      </div>
+    </div>
+  </div>
+
+  <!-- 历史日志 -->
+  <div class="card" style="grid-column:1/-1;max-height:320px;overflow-y:auto">
+    <div class="card__header"><h3>解码历史日志</h3><span class="badge" id="badge-count">0 / 200</span></div>
+    <table class="history-table">
+      <thead><tr><th>#</th><th>时间</th><th>状态</th><th>置信度</th></tr></thead>
+      <tbody id="history-tbody"><tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">等待数据...</td></tr></tbody>
+    </table>
+  </div>
+
+</div>
+
+<div class="footer">MetaBCI 创新应用开发赛 · 被动监测赛道 · 上大Meta梦队</div>
+
+<script>
+// ============================================================================
+// 状态常量
+// ============================================================================
+const STATE_NAMES = {'-1':'等待中','0':'涣散','1':'一般','2':'集中'};
+const STATE_CSS   = {'-1':'unknown','0':'distracted','1':'normal','2':'focused'};
+const TAG_CSS     = {'-1':'','0':'tag--distracted','1':'tag--normal','2':'tag--focused'};
+let counter = 0;
+
+// ============================================================================
+// 波形 — 简洁版 (数组缓冲 + 贝塞尔平滑 + 逐点释放)
+// ============================================================================
+const wc = document.getElementById('wave-canvas'), ctx = wc.getContext('2d');
+const MAX_PTS = 800, PX = 1.3;
+let buf1 = [], buf2 = [];
+let pend1 = [], pend2 = [];
+let lastSeq = 0;
+let demoLabel = 1;  // 演示模式当前预测标签 (和 SSE 同步)
+
+function rsz() {
+  wc.width = wc.parentElement.clientWidth - 48;
+  wc.height = 260;
+}
+rsz(); window.addEventListener('resize', rsz);
+
+function fetchWaveAndDraw() {
+  try {
+  fetch('/api/wave').then(r=>r.json()).then(d=>{
+    if (d.fp1 && d.fp1.length > 0 && d.seq !== lastSeq) {
+      lastSeq = d.seq;
+      for (let v of d.fp1) pend1.push(v);
+      for (let v of d.fp2) pend2.push(v);
+    }
+  }).catch(e => {});  // 静默重试, 下次 fetch 会在 100ms 后再次尝试
+
+  const n = Math.min(15, pend1.length);
+  for (let i = 0; i < n; i++) { buf1.push(pend1.shift()); buf2.push(pend2.shift()); }
+  if (pend1.length === 0 && currentMode === 'demo') {
+    // 演示模式: 无数据时生成正弦波
+    const t = Date.now() / 1000;
+    var aa = demoLabel === 2 ? 20 : (demoLabel === 0 ? 50 : 35);
+    var ba = demoLabel === 2 ? 50 : (demoLabel === 0 ? 20 : 35);
+    for (let i = 0; i < 15; i++) {
+      buf1.push(Math.sin((t + i*0.004) * 2*Math.PI * 10) * aa);
+      buf2.push(Math.sin((t + i*0.004) * 2*Math.PI * 20) * ba);
+    }
+  }
+  // 设备模式无数据: 不推新点, 旧波形自然左移消失
+  while (buf1.length > MAX_PTS) { buf1.shift(); buf2.shift(); }
+
+  const W = wc.width, H = wc.height, splitY = H * 0.5;
+  const mar = splitY * 0.12, u = splitY - 2 * mar;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(59,130,246,0.03)'; ctx.fillRect(0, 0, W, splitY);
+  ctx.fillStyle = 'rgba(6,182,212,0.03)'; ctx.fillRect(0, splitY, W, H - splitY);
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(0, splitY); ctx.lineTo(W, splitY); ctx.stroke();
+  ctx.strokeStyle = 'rgba(26,38,54,0.35)'; ctx.lineWidth = 0.5;
+  for (let y = 0; y < H; y += 26) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
+  // α波
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, 0, W, splitY); ctx.clip();
+  ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2;
+  const n1 = Math.min(buf1.length, Math.floor(W / PX));
+  if (n1 > 1) {
+    ctx.beginPath();
+    const s1 = buf1.length - n1;
+    for (let i = 0; i < n1; i++) {
+      const x = i * PX;
+      const y = mar + (80 - buf1[s1 + i]) / 160 * u;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // β波
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, splitY, W, H - splitY); ctx.clip();
+  ctx.strokeStyle = '#06b6d4'; ctx.lineWidth = 2;
+  const n2 = Math.min(buf2.length, Math.floor(W / PX));
+  if (n2 > 1) {
+    ctx.beginPath();
+    const s2 = buf2.length - n2;
+    for (let i = 0; i < n2; i++) {
+      const x = i * PX;
+      const y = splitY + mar + (80 - buf2[s2 + i]) / 160 * u;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // 标签 + α/β 功率比
+  ctx.font = '13px sans-serif';
+  ctx.fillStyle = '#60a5fa';
+  ctx.fillText('a 8-13Hz', 10, 16);
+  ctx.fillStyle = '#22d3ee';
+  ctx.fillText('b 14-30Hz', 10, splitY + 18);
+
+  // 实时 α/β 功率比 (显示在右上角)
+  if (buf1.length > 50 && buf2.length > 50) {
+    var alphaPwr = 0, betaPwr = 0;
+    var nPts = Math.min(50, buf1.length);
+    for (var k = buf1.length - nPts; k < buf1.length; k++) {
+      alphaPwr += buf1[k] * buf1[k];
+      betaPwr  += buf2[k] * buf2[k];
+    }
+    alphaPwr = Math.sqrt(alphaPwr / nPts);
+    betaPwr  = Math.sqrt(betaPwr  / nPts);
+    var ratio = alphaPwr / Math.max(betaPwr, 0.01);
+    var labelColor = demoLabel === 2 ? '#10b981' : (demoLabel === 0 ? '#ef4444' : '#f59e0b');
+    var txt = 'a/b:' + ratio.toFixed(1) + ' ' + (demoLabel===2?'集中':demoLabel===0?'涣散':'一般');
+    ctx.font = 'bold 11px monospace';
+    var tw2 = ctx.measureText(txt).width;
+    ctx.fillStyle = 'rgba(6,9,19,0.8)';
+    ctx.fillRect(W - tw2 - 18, 2, tw2 + 16, 18);
+    ctx.fillStyle = labelColor;
+    ctx.fillText(txt, W - tw2 - 10, 15);
+  }
+
+  } catch(e) { console.error(e); }
+  setTimeout(fetchWaveAndDraw, 100);
+}
+
+fetchWaveAndDraw();
+
+// ============================================================================
+// SSE 实时推送
+// ============================================================================
+const es = new EventSource('/stream');
+es.onopen  = function()  { console.log('[SSE] 连接已建立'); };
+es.onerror = function()  { console.log('[SSE] 连接错误/断开 (readyState='+es.readyState+')'); };
+es.onmessage = function(e) {
+  const s = JSON.parse(e.data), cls = STATE_CSS[s.label];
+  demoLabel = parseInt(s.label);  // 同步演示模式标签
+  console.log('[SSE] 收到:', STATE_NAMES[s.label], (s.confidence*100).toFixed(1)+'%', s.timestamp);
+
+  // 状态环
+  const ring = document.getElementById('state-ring');
+  ring.className = 'state-ring state-ring--'+cls;
+  const lbl = document.getElementById('state-label');
+  lbl.className = 'state-label state-label--'+cls;
+  lbl.textContent = STATE_NAMES[s.label];
+  document.getElementById('state-confidence').textContent = '置信度 '+(s.confidence*100).toFixed(1)+'%';
+  document.getElementById('state-timestamp').textContent = s.timestamp||'--';
+
+  // 历史表
+  counter++;
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<td>'+counter+'</td><td>'+s.timestamp+'</td><td><span class="tag '+TAG_CSS[s.label]+'">'+STATE_NAMES[s.label]+'</span></td><td>'+(s.confidence*100).toFixed(1)+'%</td>';
+  const tb = document.getElementById('history-tbody');
+  tb.insertBefore(tr, tb.firstChild);
+  if (tb.children.length > 200) tb.removeChild(tb.lastChild);
+  fetchStats();
+};
+
+// ============================================================================
+// 统计更新
+// ============================================================================
+function fetchStats() {
+  fetch('/api/stats').then(r=>r.json()).then(s=>{
+    document.getElementById('stat-focused').textContent = s.focused;
+    document.getElementById('stat-normal').textContent = s.normal;
+    document.getElementById('stat-distracted').textContent = s.distracted;
+    document.getElementById('badge-total').textContent = '总计: '+s.total;
+    document.getElementById('badge-count').textContent = s.total+' / 200';
+    document.getElementById('avg-conf').textContent = (s.avg_confidence*100).toFixed(1)+'%';
+    const h=160, maxVal=Math.max(s.focused,s.normal,s.distracted);
+    document.getElementById('bar-focused').style.height = (maxVal>0 ? s.focused/maxVal*h : 4)+'px';
+    document.getElementById('bar-normal').style.height = (maxVal>0 ? s.normal/maxVal*h : 4)+'px';
+    document.getElementById('bar-distracted').style.height = (maxVal>0 ? s.distracted/maxVal*h : 4)+'px';
+  });
+}
+setInterval(fetchStats, 3000);
+fetchStats();
+
+// ============================================================================
+// 模式切换 (显式 — 不再 toggle)
+// ============================================================================
+let currentMode = '';  // 启动后由 /api/status 设置
+
+function updateButtons(mode) {
+  const btnD = document.getElementById('btn-demo');
+  const btnV = document.getElementById('btn-device');
+  btnD.classList.remove('btn--active', 'btn--demo-active');
+  btnV.classList.remove('btn--active');
+  if (mode === 'demo') {
+    btnD.classList.add('btn--demo-active');
+    btnD.textContent = '🎭 演示模式 ●';
+    btnV.textContent = '🔌 连接设备';
+  } else if (mode === 'device') {
+    btnV.classList.add('btn--active');
+    btnV.textContent = '🔌 设备已连接 ●';
+    btnD.textContent = '🎭 演示模式';
+  }
+}
+
+function updateIndicator(mode, deviceAvail) {
+  const dot = document.getElementById('indicator-dot');
+  const txt = document.getElementById('indicator-text');
+  if (mode === 'device') {
+    dot.style.background = '#06b6d4';
+    txt.textContent = '设备已连接';
+  } else if (mode === 'demo') {
+    dot.style.background = 'var(--focused)';
+    txt.textContent = deviceAvail ? '演示模式 (设备可用)' : '演示模式';
+  } else {
+    dot.style.background = 'var(--text-muted)';
+    txt.textContent = '未连接';
+  }
+}
+
+function switchToDemo() {
+  console.log('[BTN] 切换→演示模式');
+  fetch('/api/mode/demo', {method:'POST'})
+    .then(r=>r.json())
+    .then(d=>{
+      console.log('[BTN] 演示模式 响应:', d);
+      currentMode = d.mode;
+      updateButtons(d.mode);
+      updateIndicator(d.mode, d.device_available);
+    })
+    .catch(e=>console.error('[BTN] 演示模式 失败:', e));
+}
+
+function switchToDevice() {
+  console.log('[BTN] 切换→设备模式');
+  fetch('/api/mode/device', {method:'POST'})
+    .then(r=>r.json())
+    .then(d=>{
+      console.log('[BTN] 设备模式 响应:', d);
+      currentMode = d.mode;
+      updateButtons(d.mode);
+      updateIndicator(d.mode, d.device_available);
+    })
+    .catch(e=>console.error('[BTN] 设备模式 失败:', e));
+}
+
+// 定时同步后端状态
+function syncStatus() {
+  fetch('/api/status').then(r=>r.json()).then(d=>{
+    if (d.mode !== currentMode) {
+      console.log('[SYNC] 模式变更: '+currentMode+' → '+d.mode);
+      currentMode = d.mode;
+      updateButtons(d.mode);
+    }
+    updateIndicator(d.mode, d.device_available);
+  }).catch(e=>console.error('[SYNC] status 失败:', e));
+}
+
+// ============================================================================
+// 重置
+// ============================================================================
+function resetData() {
+  if (!confirm('确定重置所有数据?')) return;
+  fetch('/api/reset', {method:'POST'}).then(()=>{
+    document.getElementById('history-tbody').innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">已重置</td></tr>';
+    counter = 0;
+    document.getElementById('stat-focused').textContent = '0';
+    document.getElementById('stat-normal').textContent = '0';
+    document.getElementById('stat-distracted').textContent = '0';
+    fetchStats();
+  });
+}
+
+// ============================================================================
+// 初始化
+// ============================================================================
+syncStatus();  // 获取初始模式
+setInterval(syncStatus, 3000);  // 每 3 秒同步
+</script>
+</body>
+</html>
